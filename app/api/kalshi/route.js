@@ -19,6 +19,10 @@ const CATEGORY_SERIES = {
     "KXUSAIRANAGREEMENT", "KXHOUSE", "KXSENATE", "KXPRES", "KXGOVSHUT",
     "KXCONTROL", "KXPRESPARTY",
   ],
+  sports: [
+    "KXMLBGAME", "KXWNBAGAME", "KXNFLGAME", "KXNBAGAME", "KXNHLGAME",
+    "KXMLSGAME", "KXUFC",
+  ],
 };
 
 async function fetchSeries(seriesTicker) {
