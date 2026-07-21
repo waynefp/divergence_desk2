@@ -135,6 +135,7 @@ export default function Home() {
     ["economics", "Economics"],
     ["crypto", "Crypto"],
     ["politics", "Politics"],
+    ["sports", "Sports"],
     ["all", "All"],
   ];
 
@@ -175,7 +176,7 @@ export default function Home() {
       setPhase("done");
       if (!(d.matches || []).length)
         setNote(
-          "No confident pairs in the current top-volume set. The two venues' hottest markets don't always overlap — try again later or expand the scan."
+          "No confident pairs found in " + kalshi.length + " Kalshi and " + poly.length + " Polymarket " + cat + " markets. Try another category, or rescan later — listings rotate through the day."
         );
     } catch (e) {
       setNote("Matching failed — " + (e.message || e));
@@ -191,10 +192,15 @@ export default function Home() {
         const k = kMap[m.kalshi_id],
           p = pMap[m.poly_id];
         if (!k || !p) return null;
-        return { ...m, k, p, gap: Math.abs(k.prob - p.prob) };
+        const gap = Math.abs(k.prob - p.prob);
+        const thin = Math.min(k.volume, p.volume);
+        // Liquidity-aware score: a gap only counts as signal to the extent
+        // the thinner side has real flow behind its quote.
+        const weight = Math.min(1, Math.log10(1 + thin) / 5);
+        return { ...m, k, p, gap, thin, score: gap * weight };
       })
       .filter(Boolean)
-      .sort((a, b) => b.gap - a.gap);
+      .sort((a, b) => b.score - a.score);
   }, [matches, kalshi, poly]);
 
   return (
@@ -484,7 +490,7 @@ export default function Home() {
                 margin: "4px 0 12px",
               }}
             >
-              {rows.length} matched pairs · {cat} · sorted by divergence
+              {rows.length} matched pairs · {cat} · {kalshi.length} kalshi / {poly.length} polymarket scanned
             </div>
             {rows.map((r, i) => (
               <article
@@ -595,6 +601,23 @@ export default function Home() {
                   }}
                 >
                   <ConfTag v={r.confidence} />
+                  {r.thin < 50000 && (
+                    <span
+                      style={{
+                        fontSize: 10,
+                        fontFamily: "'IBM Plex Mono', monospace",
+                        textTransform: "uppercase",
+                        letterSpacing: ".08em",
+                        color: C.edge,
+                        border: `1px solid ${C.edge}`,
+                        borderRadius: 3,
+                        padding: "1px 6px",
+                        whiteSpace: "nowrap",
+                      }}
+                    >
+                      thin {fmtVol(r.thin)}
+                    </span>
+                  )}
                   <p
                     style={{
                       margin: 0,
@@ -605,6 +628,8 @@ export default function Home() {
                     }}
                   >
                     {r.note}
+                    {r.thin < 50000 &&
+                      " \u2014 Low volume on one side; this gap may reflect a stale quote rather than real disagreement."}
                   </p>
                 </div>
               </article>
