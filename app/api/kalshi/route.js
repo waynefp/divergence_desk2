@@ -51,21 +51,34 @@ export async function GET(req) {
 
     const out = [];
     for (const m of raw) {
-      const bid = Number(m.yes_bid),
-        ask = Number(m.yes_ask),
-        last = Number(m.last_price);
-      let cents = null;
-      if (bid > 0 && ask > 0) cents = (bid + ask) / 2;
-      else if (last > 0) cents = last;
-      if (cents == null) continue;
+      // Kalshi now returns dollar-string price fields (e.g. yes_bid_dollars:
+      // "0.4100") instead of integer cents; support both formats.
+      const bid =
+        parseFloat(m.yes_bid_dollars) || Number(m.yes_bid) / 100 || 0;
+      const ask =
+        parseFloat(m.yes_ask_dollars) || Number(m.yes_ask) / 100 || 0;
+      const last =
+        parseFloat(m.last_price_dollars) || Number(m.last_price) / 100 || 0;
+      let prob = null;
+      if (bid > 0 && ask > 0) prob = (bid + ask) / 2;
+      else if (last > 0) prob = last;
+      else if (ask > 0) prob = ask;
+      if (prob == null || !(prob > 0 && prob < 1)) continue;
+
+      const title = [m.title, m.yes_sub_title || m.subtitle]
+        .filter(Boolean)
+        .join(" — ")
+        .replace(/\*\*/g, "");
 
       out.push({
         id: m.ticker,
-        title: [m.title, m.yes_sub_title || m.subtitle]
-          .filter(Boolean)
-          .join(" — "),
-        prob: cents / 100,
-        volume: Number(m.volume || m.volume_24h || 0),
+        title,
+        prob,
+        volume:
+          parseFloat(m.volume_fp) ||
+          parseFloat(m.volume_24h_fp) ||
+          Number(m.volume) ||
+          0,
         close: (m.close_time || "").slice(0, 10),
         rules: (m.rules_primary || "").slice(0, 300),
       });
