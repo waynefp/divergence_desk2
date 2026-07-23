@@ -102,6 +102,56 @@ function Gauge({ k, p }) {
   );
 }
 
+function Spark({ points }) {
+  if (!points || points.length < 2) return null;
+  const W = 220,
+    H = 34;
+  const gaps = points.map((d) => d.gap);
+  const max = Math.max(...gaps, 0.02);
+  const path = points
+    .map((d, i) => {
+      const x = (i / (points.length - 1)) * W;
+      const y = H - (d.gap / max) * (H - 4) - 2;
+      return `${i === 0 ? "M" : "L"}${x.toFixed(1)},${y.toFixed(1)}`;
+    })
+    .join(" ");
+  const first = gaps[0],
+    last = gaps[gaps.length - 1];
+  const dir =
+    last > first * 1.15
+      ? ["widening", C.edge]
+      : last < first * 0.85
+      ? ["converging", C.good]
+      : ["stable", C.inkSoft];
+  return (
+    <div style={{ marginTop: 12 }}>
+      <div
+        style={{
+          fontSize: 10,
+          fontFamily: "'IBM Plex Mono', monospace",
+          textTransform: "uppercase",
+          letterSpacing: ".08em",
+          color: C.inkSoft,
+          marginBottom: 2,
+        }}
+      >
+        gap history · <span style={{ color: dir[1] }}>{dir[0]}</span> ·{" "}
+        {points.length} pts
+      </div>
+      <svg
+        viewBox={`0 0 ${W} ${H}`}
+        width="100%"
+        height={H}
+        preserveAspectRatio="none"
+        role="img"
+        aria-label={`Divergence trend: ${dir[0]}`}
+      >
+        <path d={path} fill="none" stroke={dir[1]} strokeWidth="1.5" />
+      </svg>
+    </div>
+  );
+}
+
 function ConfTag({ v }) {
   const map = { high: C.good, medium: C.edge, low: "#B91C1C" };
   return (
@@ -130,6 +180,8 @@ export default function Home() {
   const [matches, setMatches] = useState([]);
   const [note, setNote] = useState("");
   const [cat, setCat] = useState("economics");
+  const [history, setHistory] = useState({});
+  const [cached, setCached] = useState(false);
 
   const CATS = [
     ["economics", "Economics"],
@@ -168,12 +220,35 @@ export default function Home() {
       const r = await fetch("/api/match", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ kalshi, poly }),
+        body: JSON.stringify({ kalshi, poly, category: cat }),
       });
       const d = await r.json();
       if (d.error) throw new Error(d.error);
-      setMatches(d.matches || []);
+      const found = d.matches || [];
+      setMatches(found);
+      setCached(!!d.cached);
       setPhase("done");
+
+      // Divergence history (populated by the scheduled snapshot job).
+      setHistory({});
+      if (found.length) {
+        try {
+          const hr = await fetch("/api/history", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              pairs: found.map((m) => ({
+                kalshi_id: m.kalshi_id,
+                poly_id: m.poly_id,
+              })),
+            }),
+          });
+          const hd = await hr.json();
+          setHistory(hd.series || {});
+        } catch {
+          // history is optional; the board still works without it
+        }
+      }
       if (!(d.matches || []).length)
         setNote(
           "No confident pairs found in " + kalshi.length + " Kalshi and " + poly.length + " Polymarket " + cat + " markets. Try another category, or rescan later — listings rotate through the day."
@@ -490,7 +565,7 @@ export default function Home() {
                 margin: "4px 0 12px",
               }}
             >
-              {rows.length} matched pairs · {cat} · {kalshi.length} kalshi / {poly.length} polymarket scanned
+              {rows.length} matched pairs · {cat} · {kalshi.length} kalshi / {poly.length} polymarket scanned{cached ? " · cached" : ""}
             </div>
             {rows.map((r, i) => (
               <article
@@ -590,6 +665,8 @@ export default function Home() {
                     </div>
                   </div>
                 </div>
+
+                <Spark points={history[`${r.kalshi_id}|${r.poly_id}`]} />
 
                 <div
                   style={{
